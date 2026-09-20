@@ -70,11 +70,21 @@ class SyslogWeiterleitung(logging.Handler):
         self._kennung = kennung
         self._praefixe = tuple(logger_liste)
         self._eigener_name = __name__.rsplit(".", 1)[0]
+        self._fehler_gemeldet = False
+        # Der Socket wird BEIM EINRICHTEN im Executor erzeugt, nicht beim ersten
+        # Senden. Home Assistant erkennt blockierende Aufrufe in der Ereignis-
+        # schleife und wirft dafuer eine Ausnahme - socket.socket() gehoert dazu.
+        # Wer ihn traege erzeugt, faellt genau beim ersten Versand darauf herein.
         self._sock: socket.socket | None = None
+
+    def socket_anlegen(self) -> None:
+        """Im Executor aufrufen, nie aus der Ereignisschleife."""
+        if self._sock is None:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def _verbindung(self) -> socket.socket:
         if self._sock is None:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.socket_anlegen()
         return self._sock
 
     def emit(self, satz: logging.LogRecord) -> None:
@@ -102,8 +112,19 @@ class SyslogWeiterleitung(logging.Handler):
             einzeilig = " ".join(str(text).split())[:900]
             paket = f"<{pri}>{zeit} {rechner} {self._kennung}: {einzeilig}".encode("utf-8", "replace")
             self._verbindung().sendto(paket, self._ziel)
-        except Exception:  # noqa: BLE001 - darf NIE protokollieren, siehe Klassenkopf
-            pass
+        except Exception as fehler:  # noqa: BLE001
+            # EINMAL melden, dann schweigen. Protokollieren ist hier ungefaehrlich:
+            # emit() ueberspringt Eintraege der eigenen Integration, die Schleife
+            # kann also nicht entstehen. Ein vollstaendig stummes Schlucken hat
+            # am 20.09.2026 eine Stunde Fehlersuche gekostet - das Paket kam nie
+            # an, und niemand konnte sagen warum.
+            if not self._fehler_gemeldet:
+                self._fehler_gemeldet = True
+                _LOGGER.error(
+                    "Syslog-Versand an %s:%s schlug fehl (%s: %s). Weitere Fehler "
+                    "werden nicht mehr gemeldet.",
+                    self._ziel[0], self._ziel[1], type(fehler).__name__, fehler,
+                )
 
     def close(self) -> None:
         try:
@@ -127,6 +148,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         logger_liste=_logger_liste(d.get(CONF_LOGGER, VORGABE_LOGGER)),
     )
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    await hass.async_add_executor_job(handler.socket_anlegen)
     logging.getLogger().addHandler(handler)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = handler
 
