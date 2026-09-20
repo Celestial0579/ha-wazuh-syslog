@@ -3,7 +3,7 @@
   "name": "Wazuh: Protokollweiterleitung",
   "config_flow": true,
   "single_config_entry": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "documentation": "https://git.firestrike.de/tim.heyne/ha-wazuh-syslog",
   "issue_tracker": "https://git.firestrike.de/tim.heyne/ha-wazuh-syslog/issues",
   "codeowners": [
