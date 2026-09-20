@@ -17,28 +17,34 @@ from .const import (
 TITEL = "Wazuh: Protokollweiterleitung"
 
 
-def _maske(vorgaben: dict[str, Any]) -> vol.Schema:
-    return vol.Schema({
-        vol.Required(CONF_HOST, default=vorgaben.get(CONF_HOST, "")): str,
-        vol.Optional(CONF_PORT, default=vorgaben.get(CONF_PORT, VORGABE_PORT)): int,
-        vol.Optional(CONF_KENNUNG, default=vorgaben.get(CONF_KENNUNG, VORGABE_KENNUNG)): str,
-        vol.Optional(CONF_STUFE, default=vorgaben.get(CONF_STUFE, VORGABE_STUFE)): vol.In(list(SCHWERE)),
-        vol.Optional(CONF_LOGGER, default=vorgaben.get(CONF_LOGGER, VORGABE_LOGGER)): vol.All(
-            cv_liste, [str]
-        ),
-    })
-
-
 def cv_liste(wert: Any) -> list[str]:
-    """Nimmt eine Liste oder eine kommagetrennte Zeichenkette entgegen.
-
-    Die Oberflaeche liefert je nach Eingabefeld das eine oder das andere; wer nur
-    eine Liste erwartet, bekommt bei Eingabe von Hand einen Fehler, den niemand
-    versteht.
-    """
+    """Nimmt eine Liste oder eine kommagetrennte Zeichenkette entgegen."""
     if isinstance(wert, str):
         return [t.strip() for t in wert.split(",") if t.strip()]
     return list(wert)
+
+
+def _maske(vorgaben: dict[str, Any]) -> vol.Schema:
+    """Baut die Eingabemaske.
+
+    FALLE (20.09.2026): Das Logger-Feld war zuerst ein vol.All(cv_liste, [str]).
+    Home Assistant muss die Maske fuer die Oberflaeche und die REST-Schnittstelle
+    nach JSON uebersetzen - und ein eigener Pruefer laesst sich nicht uebersetzen.
+    Ergebnis war ein HTTP 500 beim Oeffnen des Dialogs, OHNE Eintrag im Protokoll:
+    die Ausnahme entsteht beim Serialisieren, nicht beim Ausfuehren.
+    Deshalb hier ausschliesslich einfache Typen. Die Liste wird als kommagetrennte
+    Zeichenkette abgefragt und erst im Ablauf zerlegt.
+    """
+    vorgabe_logger = vorgaben.get(CONF_LOGGER, VORGABE_LOGGER)
+    if isinstance(vorgabe_logger, (list, tuple)):
+        vorgabe_logger = ", ".join(vorgabe_logger)
+    return vol.Schema({
+        vol.Required(CONF_HOST, default=vorgaben.get(CONF_HOST, "")): str,
+        vol.Optional(CONF_PORT, default=int(vorgaben.get(CONF_PORT, VORGABE_PORT))): int,
+        vol.Optional(CONF_KENNUNG, default=vorgaben.get(CONF_KENNUNG, VORGABE_KENNUNG)): str,
+        vol.Optional(CONF_STUFE, default=vorgaben.get(CONF_STUFE, VORGABE_STUFE)): vol.In(list(SCHWERE)),
+        vol.Optional(CONF_LOGGER, default=vorgabe_logger): str,
+    })
 
 
 class WazuhSyslogConfigFlow(ConfigFlow, domain=DOMAIN):
