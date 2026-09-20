@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wazuh: Protokollweiterleitung",
+        "description": "Schickt sicherheitsrelevante Protokollzeilen als Syslog an den Wazuh-Manager. Die Adresse dieser Anlage muss dort unter allowed-ips stehen, sonst werden die Pakete lautlos verworfen.",
+        "data": {
+          "host": "Wazuh-Manager (IP)",
+          "port": "Port",
+          "kennung": "Programmname im Syslog",
+          "stufe": "Ab welcher Stufe",
+          "logger": "Zu ueberwachende Logger (kommagetrennt)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wazuh: Protokollweiterleitung",
+        "data": {
+          "host": "Wazuh-Manager (IP)",
+          "port": "Port",
+          "kennung": "Programmname im Syslog",
+          "stufe": "Ab welcher Stufe",
+          "logger": "Zu ueberwachende Logger (kommagetrennt)"
+        }
+      }
+    }
+  }
+}

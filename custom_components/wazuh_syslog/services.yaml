@@ -1,0 +1,22 @@
+senden:
+  name: Meldung senden
+  description: >-
+    Schickt eine eigene Meldung als Syslog an den Wazuh-Manager. Gedacht fuer
+    Automatisierungen, die ein sicherheitsrelevantes Ereignis melden sollen,
+    das nicht im Protokoll auftaucht.
+  fields:
+    nachricht:
+      name: Nachricht
+      description: Der Text, der im SIEM ankommt.
+      required: true
+      example: "Haustuer nachts geoeffnet, niemand zuhause"
+      selector:
+        text:
+    stufe:
+      name: Stufe
+      description: Schweregrad. Bestimmt den Syslog-Schweregrad.
+      required: false
+      default: INFO
+      selector:
+        select:
+          options: [CRITICAL, ERROR, WARNING, INFO, DEBUG]

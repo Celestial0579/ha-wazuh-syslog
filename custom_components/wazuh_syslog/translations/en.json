@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wazuh log forwarding",
+        "description": "Sends security-relevant log lines to the Wazuh manager as syslog. This host's address must be listed under allowed-ips there, or the packets are dropped silently.",
+        "data": {
+          "host": "Wazuh manager (IP)",
+          "port": "Port",
+          "kennung": "Syslog program name",
+          "stufe": "Minimum level",
+          "logger": "Loggers to watch (comma separated)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wazuh log forwarding",
+        "data": {
+          "host": "Wazuh manager (IP)",
+          "port": "Port",
+          "kennung": "Syslog program name",
+          "stufe": "Minimum level",
+          "logger": "Loggers to watch (comma separated)"
+        }
+      }
+    }
+  }
+}
