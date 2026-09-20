@@ -2,9 +2,17 @@
   Dekoder fuer Home-Assistant-Meldungen, die ueber die Integration
   wazuh_syslog ankommen. Greift am Programmnamen aus dem Syslog-Kopf.
 
-  FALLE: Der Programmname muss mit dem Feld "Programmname im Syslog" der
+  FALLE 1: Der Programmname muss mit dem Feld "Programmname im Syslog" der
   Integration uebereinstimmen (Vorgabe: homeassistant). Weicht er ab, greift
   dieser Dekoder nicht und die Zeilen landen unausgewertet im Archiv.
+
+  FALLE 2 (20.09.2026): Der erste Entwurf benutzte PCRE-Syntax in einem
+  normalen <regex>. Wazuhs eigene Ausdruckssprache OS_Regex kennt die nicht -
+  der Dekoder greift dann zwar (der Elternteil passt), extrahiert aber NICHTS.
+  Sichtbar wird das nur daran, dass die Regelbeschreibung mit einem leeren
+  $(srcip) endet: "fehlgeschlagene Anmeldung von ". Der Alarm entsteht
+  trotzdem, die Korrelation ueber die Quell-IP faellt aber lautlos aus.
+  Deshalb ausdruecklich type="pcre2".
 -->
 <decoder name="homeassistant">
   <program_name>^homeassistant$</program_name>
@@ -13,6 +21,6 @@
 <decoder name="homeassistant-login">
   <parent>homeassistant</parent>
   <prematch>Login attempt or request with invalid authentication</prematch>
-  <regex offset="after_prematch"> from \S+ \((\S+)\). Requested URL: '(\S+)'.</regex>
+  <regex type="pcre2">from \S+ \(([^)]+)\)\. Requested URL: '([^']+)'</regex>
   <order>srcip, url</order>
 </decoder>
