@@ -44,6 +44,17 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _logger_liste(wert) -> list[str]:
+    """Nimmt Liste ODER kommagetrennte Zeichenkette.
+
+    Der Einrichtungsdialog liefert eine Zeichenkette (siehe die Falle in
+    config_flow._maske), aeltere Eintraege koennen noch eine Liste enthalten.
+    """
+    if isinstance(wert, str):
+        return [t.strip() for t in wert.split(",") if t.strip()]
+    return list(wert or [])
+
+
 class SyslogWeiterleitung(logging.Handler):
     """Schickt passende Protokolleintraege als Syslog an den Wazuh-Manager.
 
@@ -113,7 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         port=int(d.get(CONF_PORT, VORGABE_PORT)),
         kennung=d.get(CONF_KENNUNG, VORGABE_KENNUNG),
         stufe=d.get(CONF_STUFE, VORGABE_STUFE),
-        logger_liste=d.get(CONF_LOGGER, VORGABE_LOGGER),
+        logger_liste=_logger_liste(d.get(CONF_LOGGER, VORGABE_LOGGER)),
     )
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     logging.getLogger().addHandler(handler)
