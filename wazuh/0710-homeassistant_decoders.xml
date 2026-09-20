@@ -1,0 +1,18 @@
+<!--
+  Dekoder fuer Home-Assistant-Meldungen, die ueber die Integration
+  wazuh_syslog ankommen. Greift am Programmnamen aus dem Syslog-Kopf.
+
+  FALLE: Der Programmname muss mit dem Feld "Programmname im Syslog" der
+  Integration uebereinstimmen (Vorgabe: homeassistant). Weicht er ab, greift
+  dieser Dekoder nicht und die Zeilen landen unausgewertet im Archiv.
+-->
+<decoder name="homeassistant">
+  <program_name>^homeassistant$</program_name>
+</decoder>
+
+<decoder name="homeassistant-login">
+  <parent>homeassistant</parent>
+  <prematch>Login attempt or request with invalid authentication</prematch>
+  <regex offset="after_prematch"> from \S+ \((\S+)\). Requested URL: '(\S+)'.</regex>
+  <order>srcip, url</order>
+</decoder>
