@@ -7,7 +7,7 @@ Wazuh-Manager weiter.
 
 Fehlgeschlagene Anmeldungen stehen im Protokoll von Home Assistant — und sonst
 nirgends. Wer alle anderen Sicherheitsquellen im SIEM korreliert, hat ausgerechnet
-an der Haussteuerung einen blinden Fleck, obwohl die von aussen erreichbar ist.
+an der Haussteuerung einen blinden Fleck, obwohl die oft von aussen erreichbar ist.
 
 ## Warum eine Integration und kein `shell_command`
 
@@ -53,7 +53,7 @@ kein Eintrag, nichts.
   <connection>syslog</connection>
   <port>514</port>
   <protocol>udp</protocol>
-  <allowed-ips>192.0.2.10</allowed-ips>
+  <allowed-ips>192.0.2.10</allowed-ips>  <!-- Adresse der HA-Anlage eintragen -->
 </remote>
 ```
 

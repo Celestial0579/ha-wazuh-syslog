@@ -2,7 +2,7 @@
 
 WOZU: Fehlgeschlagene Anmeldungen stehen im HA-Protokoll und sonst nirgends. Wer alle
 anderen Sicherheitsquellen im SIEM korreliert, hat ausgerechnet an der Haussteuerung
-einen blinden Fleck - obwohl die von aussen erreichbar ist.
+einen blinden Fleck - obwohl die oft von aussen erreichbar ist.
 
 WARUM EINE EIGENE INTEGRATION UND KEIN shell_command:
 Auf einer HAOS-Anlage ohne Terminal-, Datei-Editor- oder SSH-Add-on kommt man an die
