@@ -4,8 +4,8 @@
   "config_flow": true,
   "single_config_entry": true,
   "version": "1.0.2",
-  "documentation": "https://git.firestrike.de/tim.heyne/ha-wazuh-syslog",
-  "issue_tracker": "https://git.firestrike.de/tim.heyne/ha-wazuh-syslog/issues",
+  "documentation": "https://github.com/Celestial0579/ha-wazuh-syslog",
+  "issue_tracker": "https://github.com/Celestial0579/ha-wazuh-syslog/issues",
   "codeowners": [
     "@tim.heyne"
   ],
