@@ -38,6 +38,11 @@ werten nur Zeilen, die mit `homeassistant.components.http.ban: ` beginnen.
 1.0.6 bringt die Regeln 100535 und 100536 (Anmeldung mit nicht eindeutiger Quelladresse); vorher im
 Bestand prüfen, dass die Nummern frei sind.
 
+**Regelnummern.** Der Integration gehört der Block 100530–100549, belegt sind davon heute
+100530–100536. Neue Regeln der Integration kommen in diesen Block. Eigene Regeln bitte außerhalb
+davon nummerieren und in eine eigene Datei legen, nicht in `homeassistant_rules.xml`. Diese Datei wird
+bei jedem Update ersetzt, und doppelte Nummern lassen die Regelprüfung beim Neustart scheitern.
+
 **Welche Logger.** Das Feld nimmt Logger-Namen, kommagetrennt; Unter-Logger zählen mit. **Leer bedeutet
 die Vorgabe** aus der Tabelle oben. Bis 1.0.5 bedeutete leer „alles“. Wer wirklich alles weiterleiten
 will, trägt `*` ein. Das schickt aber auch Zeilen mit sensiblen Inhalten (Adressen, Namen, Token in

@@ -4,7 +4,10 @@
   Quellen vergleichbar.
 -->
 <!--
-  Nummernbereich 100530-100536 (100535/100536 seit 1.0.6). 100400-100403 waren belegt (Suricata und
+  Block 100530-100549 gehoert dieser Integration, belegt sind 100530-100536
+  (100535/100536 seit 1.0.6). Eigene Regeln ausserhalb des Blocks und in einer
+  eigenen Datei anlegen: Diese Datei wird bei jedem Update ersetzt.
+  100400-100403 waren belegt (Suricata und
   zz_korrelation) - vor dem Anlegen IMMER den Bestand pruefen, doppelte
   Nummern lassen die Regelpruefung beim Neustart scheitern.
 
