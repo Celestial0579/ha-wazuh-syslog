@@ -29,7 +29,12 @@ Logger, die wirklich sicherheitsrelevant sind:
 | `homeassistant.components.auth` | Fehler der Anmeldung selbst |
 | `homeassistant.components.cloud`, `hass_nabucasa` | Ausfaelle des Fernzugangs |
 
-Dazu der Dienst `wazuh_syslog.senden` fuer eigene Meldungen aus Automatisierungen.
+Dazu der Dienst `wazuh_syslog.senden` fuer eigene Meldungen aus Automatisierungen. Er ist nur fuer
+Admins aufrufbar, und seine Zeilen beginnen mit `wazuh_syslog.senden: `. So kann niemand ueber den
+Dienst eine fehlgeschlagene Anmeldung mit beliebiger Quell-IP vortaeuschen; Dekoder und Regeln
+werten nur Zeilen, die mit `homeassistant.components.http.ban: ` beginnen.
+
+**Nach dem Update auf 1.0.3** Dekoder und Regeln aus `wazuh/` in Wazuh neu einspielen.
 
 ## Einrichtung
 
@@ -37,7 +42,8 @@ Dazu der Dienst `wazuh_syslog.senden` fuer eigene Meldungen aus Automatisierunge
    Home Assistant neu starten.
 2. *Einstellungen → Geraete & Dienste → Integration hinzufuegen* →
    **Wazuh: Protokollweiterleitung**.
-3. Adresse des Wazuh-Managers eintragen. Port 514, Programmname `homeassistant`
+3. Adresse des Wazuh-Managers eintragen (am besten die IP-Adresse; ein Rechnername wird beim
+   Einrichten und danach alle 30 Minuten aufgeloest, nie beim Senden). Port 514, Programmname `homeassistant`
    und Mindeststufe `WARNING` sind sinnvolle Vorgaben.
 
 ## Wazuh-Seite

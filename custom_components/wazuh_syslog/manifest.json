@@ -1,15 +1,14 @@
 {
   "domain": "wazuh_syslog",
   "name": "Wazuh: Protokollweiterleitung",
-  "codeowners": [
-    "@Celestial0579"
-  ],
+  "categories": ["computers_network.monitoring"],
+  "codeowners": ["@Celestial0579"],
   "config_flow": true,
-  "dependencies": [],
   "documentation": "https://github.com/Celestial0579/ha-wazuh-syslog",
+  "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Celestial0579/ha-wazuh-syslog/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.0.2"
+  "version": "1.0.3"
 }
