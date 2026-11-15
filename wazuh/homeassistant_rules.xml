@@ -4,7 +4,7 @@
   Quellen vergleichbar.
 -->
 <!--
-  Nummernbereich 100530-100534. 100400-100403 waren belegt (Suricata und
+  Nummernbereich 100530-100536 (100535/100536 seit 1.0.6). 100400-100403 waren belegt (Suricata und
   zz_korrelation) - vor dem Anlegen IMMER den Bestand pruefen, doppelte
   Nummern lassen die Regelpruefung beim Neustart scheitern.
 
@@ -21,7 +21,7 @@
 
   <rule id="100531" level="5">
     <if_sid>100530</if_sid>
-    <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from </regex>
+    <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from (?!(?:.*?\)\. Requested URL: '){2})[^\s()]+ \([0-9A-Fa-f:.]+(?:%[0-9A-Za-z_.-]+)?\)\. Requested URL: '</regex>
     <description>Home Assistant: fehlgeschlagene Anmeldung von $(srcip)</description>
     <group>authentication_failed,aussenangriff,</group>
   </rule>
@@ -38,6 +38,22 @@
     <if_sid>100530</if_sid>
     <regex type="pcre2">^(hass_nabucasa|homeassistant\.components\.cloud)(\.[\w.]+)?: </regex>
     <description>Home Assistant: Stoerung des Fernzugangs</description>
+  </rule>
+
+  <!-- Anmeldezeile, deren Quelladresse nicht eindeutig ist (Rechnername aus dem PTR mit
+       Leerzeichen oder Klammern, oder die Adressfolge mehrfach): keine srcip, aber eine
+       deutliche Meldung, und gehaeuft wie 100532 (GHSA-q7p9-34f8-phc3). -->
+  <rule id="100535" level="8">
+    <if_sid>100530</if_sid>
+    <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from (?!(?!(?:.*?\)\. Requested URL: '){2})[^\s()]+ \([0-9A-Fa-f:.]+(?:%[0-9A-Za-z_.-]+)?\)\. Requested URL: ')</regex>
+    <description>Home Assistant: fehlgeschlagene Anmeldung, Quelladresse nicht eindeutig (verdaechtiger PTR-Name)</description>
+    <group>authentication_failed,aussenangriff,</group>
+  </rule>
+
+  <rule id="100536" level="10" frequency="5" timeframe="120">
+    <if_matched_sid>100535</if_matched_sid>
+    <description>Home Assistant: mehrere fehlgeschlagene Anmeldungen mit nicht eindeutiger Quelladresse</description>
+    <group>authentication_failures,aussenangriff,</group>
   </rule>
 
   <rule id="100534" level="3">
