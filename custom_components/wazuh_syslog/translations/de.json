@@ -10,6 +10,9 @@
           "kennung": "Programmname im Syslog",
           "stufe": "Ab welcher Stufe",
           "logger": "Zu ueberwachende Logger (kommagetrennt)"
+        },
+        "data_description": {
+          "logger": "Logger-Namen, kommagetrennt; Unter-Logger zählen mit. Leer bedeutet die Vorgabe (Anmeldung, Fernzugang). „*“ leitet alles weiter, auch Zeilen mit sensiblen Inhalten. Der Versand läuft unverschlüsselt und ohne Anmeldung über UDP; abgesichert ist er nur über allowed-ips beim Wazuh-Manager."
         }
       }
     },
@@ -29,6 +32,9 @@
           "kennung": "Programmname im Syslog",
           "stufe": "Ab welcher Stufe",
           "logger": "Zu ueberwachende Logger (kommagetrennt)"
+        },
+        "data_description": {
+          "logger": "Logger-Namen, kommagetrennt; Unter-Logger zählen mit. Leer bedeutet die Vorgabe (Anmeldung, Fernzugang). „*“ leitet alles weiter, auch Zeilen mit sensiblen Inhalten. Der Versand läuft unverschlüsselt und ohne Anmeldung über UDP; abgesichert ist er nur über allowed-ips beim Wazuh-Manager."
         }
       }
     },

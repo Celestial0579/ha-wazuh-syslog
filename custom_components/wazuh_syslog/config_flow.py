@@ -73,7 +73,7 @@ class WazuhSyslogConfigFlow(ConfigFlow, domain=DOMAIN):
         fehler: dict[str, str] = {}
         if user_input is not None and not (fehler := pruefen(user_input)):
             user_input[CONF_HOST] = str(user_input[CONF_HOST]).strip()
-            user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER))
+            user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER)) or list(VORGABE_LOGGER)
             return self.async_create_entry(title=TITEL, data=user_input)
         return self.async_show_form(step_id="user", data_schema=_maske(user_input or {}), errors=fehler)
 
@@ -90,7 +90,7 @@ class WazuhSyslogOptionsFlow(OptionsFlow):
         fehler: dict[str, str] = {}
         if user_input is not None and not (fehler := pruefen(user_input)):
             user_input[CONF_HOST] = str(user_input[CONF_HOST]).strip()
-            user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER))
+            user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER)) or list(VORGABE_LOGGER)
             return self.async_create_entry(title="", data=user_input)
         jetzt = {**self.config_entry.data, **self.config_entry.options, **(user_input or {})}
         return self.async_show_form(step_id="init", data_schema=_maske(jetzt), errors=fehler)
