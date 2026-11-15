@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 import re
 import socket
+import time
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
@@ -185,3 +186,49 @@ def test_meldeabstand(caplog: pytest.LogCaptureFixture) -> None:
         mitschnitt.sendto = gut
         handler._senden("b", "WARNING")
     assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
+
+
+def test_unterdrueckte_meldung_wird_nachgeholt(caplog: pytest.LogCaptureFixture) -> None:
+    """#10: Fehler, Erfolg, Fehler im Meldeabstand, später weitere Fehler ergeben eine zweite Meldung."""
+    handler, mitschnitt = _handler()
+    gut = mitschnitt.sendto
+
+    def kaputt(_paket: bytes, _ziel) -> None:
+        raise OSError("Netz weg")
+
+    def fehler() -> list[logging.LogRecord]:
+        return [r for r in caplog.records if r.levelname == "ERROR"]
+
+    mitschnitt.sendto = kaputt
+    handler._senden("a", "WARNING")  # gemeldet
+    mitschnitt.sendto = gut
+    handler._senden("b", "WARNING")  # „geht wieder“
+    mitschnitt.sendto = kaputt
+    handler._senden("c", "WARNING")  # neuer Ausfall im Meldeabstand: noch still
+    assert len(fehler()) == 1 and handler.gestoert
+    handler._senden("d", "WARNING")
+    assert len(fehler()) == 1
+    handler._zuletzt_gemeldet -= 1000  # Meldeabstand verstrichen, Ausfall hält an
+    handler._senden("e", "WARNING")
+    assert len(fehler()) == 2
+    handler._senden("f", "WARNING")
+    assert len(fehler()) == 2  # je Ausfall nur einmal
+    mitschnitt.sendto = gut
+    handler._senden("g", "WARNING")
+    assert len([r for r in caplog.records if "geht wieder" in r.getMessage()]) == 2
+
+
+def test_geht_wieder_nur_nach_meldung(caplog: pytest.LogCaptureFixture) -> None:
+    handler, mitschnitt = _handler()
+    gut = mitschnitt.sendto
+
+    def kaputt(_paket: bytes, _ziel) -> None:
+        raise OSError("Netz weg")
+
+    handler._zuletzt_gemeldet = time.monotonic()  # gerade erst gemeldet
+    mitschnitt.sendto = kaputt
+    handler._senden("a", "WARNING")
+    mitschnitt.sendto = gut
+    handler._senden("b", "WARNING")
+    assert not [r for r in caplog.records if "geht wieder" in r.getMessage()]
+    assert not handler.gestoert
