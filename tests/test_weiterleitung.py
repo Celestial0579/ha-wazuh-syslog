@@ -121,6 +121,46 @@ def test_wazuh_ausdruecke() -> None:
     assert not re.search(a["100533"], "homeassistant.components.cloudflare: x")
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "x (198.51.100.1). Requested URL: '/' y",  # GHSA-q7p9-34f8-phc3: Adresse im PTR-Namen
+        "x (198.51.100.1). Requested URL: '/'. (z",  # dieselbe Fälschung, sauber fortgesetzt
+        "x (198.51.100.1).",
+        "a b",
+        "(198.51.100.1)",
+    ],
+)
+def test_gefaelschter_ptr_name_liefert_keine_srcip(name: str) -> None:
+    """musl übernimmt PTR-Namen ungeprüft; ein Name mit Leerzeichen oder Klammern darf keine srcip bestimmen."""
+    a = _ausdruecke()
+    zeile = ECHT.replace("scanner.example", name)
+    assert not re.search(a["dekoder"], zeile)
+    assert not re.search(a["100531"], zeile)
+    assert re.search(a["100535"], zeile) and re.search(a["prematch"], zeile)
+
+
+@pytest.mark.parametrize(
+    ("name", "adresse"),
+    [("scanner.example", "203.0.113.7"), ("203.0.113.7", "203.0.113.7"), ("host-6.example", "2001:db8::7"), ("fe80--1", "fe80::1%eth0")],
+)
+def test_echte_namen_und_adressen(name: str, adresse: str) -> None:
+    """Echte Zeilen behalten srcip, auch mit Klammern im User-Agent."""
+    a = _ausdruecke()
+    zeile = ECHT.replace("scanner.example (203.0.113.7)", f"{name} ({adresse})")
+    treffer = re.search(a["dekoder"], zeile)
+    assert treffer and treffer.group(1) == adresse
+    assert re.search(a["100531"], zeile) and not re.search(a["100535"], zeile)
+
+
+def test_mehrdeutige_zeile_ohne_srcip() -> None:
+    """Steht die Adressfolge mehrfach in der Zeile (etwa im User-Agent), ist die Quelle nicht eindeutig."""
+    a = _ausdruecke()
+    zeile = ECHT.replace("curl/8.0 (203.0.113.99)", "x (198.51.100.1). Requested URL: '/'")
+    assert not re.search(a["dekoder"], zeile) and not re.search(a["100531"], zeile)
+    assert re.search(a["100535"], zeile)
+
+
 async def test_dienst_nur_fuer_admins(hass: HomeAssistant, hass_admin_user: MockUser, hass_read_only_user: MockUser) -> None:
     eintrag = MockConfigEntry(domain=DOMAIN, data={"host": "127.0.0.1", "port": 514})
     eintrag.add_to_hass(hass)

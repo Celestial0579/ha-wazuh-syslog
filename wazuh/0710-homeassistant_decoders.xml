@@ -16,6 +16,15 @@
   "homeassistant.components.http.ban: " beginnt. Meldungen des Dienstes
   wazuh_syslog.senden beginnen mit "wazuh_syslog.senden: " und koennen so
   keine Anmeldung vortaeuschen, auch nicht mit dem Wortlaut der echten Zeile.
+
+  SCHUTZ (seit 1.0.6, GHSA-q7p9-34f8-phc3): Vor der Adresse steht der Rechnername
+  aus dem Reverse-DNS (PTR), und den bestimmt, wem der Adressbereich gehoert.
+  musl (HAOS) uebernimmt ihn ungeprueft, auch mit Leerzeichen und Klammern; so
+  kann er eine eigene Folge "(IP). Requested URL: '" vor die echte setzen. Die
+  Zeile ist dann nicht eindeutig. Deshalb gilt die srcip nur, wenn die Folge
+  genau einmal vorkommt, der Name keine Leerzeichen und Klammern enthaelt und die
+  Adresse nur aus Hex-Ziffern, Punkten und Doppelpunkten besteht (IPv6 mit %Zone).
+  Alle anderen Anmeldezeilen meldet Regel 100535 ohne srcip.
 -->
 <decoder name="homeassistant">
   <program_name>^homeassistant$</program_name>
@@ -24,6 +33,6 @@
 <decoder name="homeassistant-login">
   <parent>homeassistant</parent>
   <prematch type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from </prematch>
-  <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from \S+ \(([^)]+)\)\. Requested URL: '([^']*)'</regex>
+  <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from (?!(?:.*?\)\. Requested URL: '){2})[^\s()]+ \(([0-9A-Fa-f:.]+(?:%[0-9A-Za-z_.-]+)?)\)\. Requested URL: '([^']*)'</regex>
   <order>srcip, url</order>
 </decoder>
