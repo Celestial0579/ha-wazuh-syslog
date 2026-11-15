@@ -10,6 +10,9 @@
           "kennung": "Syslog program name",
           "stufe": "Minimum level",
           "logger": "Loggers to watch (comma separated)"
+        },
+        "data_description": {
+          "logger": "Logger names, comma-separated; child loggers are included. Empty means the default (login, remote access). “*” forwards everything, including lines with sensitive content. Lines are sent unencrypted and unauthenticated over UDP; the only protection is allowed-ips on the Wazuh manager."
         }
       }
     },
@@ -29,6 +32,9 @@
           "kennung": "Syslog program name",
           "stufe": "Minimum level",
           "logger": "Loggers to watch (comma separated)"
+        },
+        "data_description": {
+          "logger": "Logger names, comma-separated; child loggers are included. Empty means the default (login, remote access). “*” forwards everything, including lines with sensitive content. Lines are sent unencrypted and unauthenticated over UDP; the only protection is allowed-ips on the Wazuh manager."
         }
       }
     },

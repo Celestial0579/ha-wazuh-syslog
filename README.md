@@ -34,7 +34,20 @@ Admins aufrufbar, und seine Zeilen beginnen mit `wazuh_syslog.senden: `. So kann
 Dienst eine fehlgeschlagene Anmeldung mit beliebiger Quell-IP vortaeuschen; Dekoder und Regeln
 werten nur Zeilen, die mit `homeassistant.components.http.ban: ` beginnen.
 
-**Nach dem Update auf 1.0.3** Dekoder und Regeln aus `wazuh/` in Wazuh neu einspielen.
+**Nach dem Update auf 1.0.3 und auf 1.0.6** Dekoder und Regeln aus `wazuh/` in Wazuh neu einspielen.
+1.0.6 bringt die Regeln 100535 und 100536 (Anmeldung mit nicht eindeutiger Quelladresse); vorher im
+Bestand prüfen, dass die Nummern frei sind.
+
+**Welche Logger.** Das Feld nimmt Logger-Namen, kommagetrennt; Unter-Logger zählen mit. **Leer bedeutet
+die Vorgabe** aus der Tabelle oben. Bis 1.0.5 bedeutete leer „alles“. Wer wirklich alles weiterleiten
+will, trägt `*` ein. Das schickt aber auch Zeilen mit sensiblen Inhalten (Adressen, Namen, Token in
+Fehlermeldungen von Integrationen) ins SIEM.
+
+**Klartext über UDP.** Der Versand ist RFC-3164-Syslog über UDP: unverschlüsselt, ohne Anmeldung,
+ohne Bestätigung. Jeder im Netz dazwischen kann mitlesen, und jeder, der Pakete mit der Absenderadresse
+der HA-Anlage schicken kann, kann Zeilen einschleusen. Abgesichert ist der Weg nur auf der Wazuh-Seite
+über `allowed-ips`. Die Strecke also nur durch ein vertrauenswürdiges Netz führen (gleiches LAN/VLAN,
+oder ein VPN).
 
 ## Einrichtung
 

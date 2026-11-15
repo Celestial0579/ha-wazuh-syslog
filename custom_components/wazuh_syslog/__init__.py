@@ -65,10 +65,16 @@ def _logger_liste(wert) -> list[str]:
 
     Der Einrichtungsdialog liefert eine Zeichenkette (siehe die Falle in
     config_flow._maske), aeltere Eintraege koennen noch eine Liste enthalten.
+
+    Eine leere Liste bedeutet die Vorgabe (sicherheitsrelevante Logger), nicht „alles“:
+    Alles weiterzuleiten schickt auch Zeilen mit sensiblen Inhalten im Klartext über UDP.
+    Dafür gibt es ausdrücklich „*“.
     """
     if isinstance(wert, str):
-        return [t.strip() for t in wert.split(",") if t.strip()]
-    return list(wert or [])
+        liste = [t.strip() for t in wert.split(",") if t.strip()]
+    else:
+        liste = [str(t).strip() for t in wert or [] if str(t).strip()]
+    return liste or list(VORGABE_LOGGER)
 
 
 def aufloesen(host: str, port: int) -> tuple[int, tuple]:
@@ -126,7 +132,7 @@ class SyslogWeiterleitung(logging.Handler):
             alt.close()  # erst nach dem Tausch: ein laufender Versand nutzt schon den neuen
 
     def _gewuenscht(self, name: str) -> bool:
-        return not self._praefixe or any(name == p or name.startswith(p + ".") for p in self._praefixe)
+        return "*" in self._praefixe or any(name == p or name.startswith(p + ".") for p in self._praefixe)
 
     def emit(self, satz: logging.LogRecord) -> None:
         # Niemals die eigenen Meldungen weiterleiten - sonst schaukelt es sich auf.

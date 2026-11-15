@@ -41,7 +41,7 @@ class Mitschnitt:
 
 
 def _handler(logger: list[str] | None = None) -> tuple[SyslogWeiterleitung, Mitschnitt]:
-    handler = SyslogWeiterleitung("127.0.0.1", 514, "homeassistant", "WARNING", logger or [])
+    handler = SyslogWeiterleitung("127.0.0.1", 514, "homeassistant", "WARNING", logger or ["*"])
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     mitschnitt = Mitschnitt()
     handler._sock, handler._ziel, handler._rechner = mitschnitt, ("127.0.0.1", 514), "ha"
@@ -232,3 +232,19 @@ def test_geht_wieder_nur_nach_meldung(caplog: pytest.LogCaptureFixture) -> None:
     handler._senden("b", "WARNING")
     assert not [r for r in caplog.records if "geht wieder" in r.getMessage()]
     assert not handler.gestoert
+
+
+def test_leere_loggerliste_bedeutet_vorgabe() -> None:
+    """#12: leer heißt die sicherheitsrelevanten Logger, „*“ heißt alles."""
+    from custom_components.wazuh_syslog import _logger_liste
+    from custom_components.wazuh_syslog.const import VORGABE_LOGGER
+
+    assert _logger_liste("") == VORGABE_LOGGER
+    assert _logger_liste([]) == VORGABE_LOGGER
+    assert _logger_liste(" , ") == VORGABE_LOGGER
+    assert _logger_liste("a.b, c") == ["a.b", "c"]
+    vorgabe, _ = _handler(_logger_liste(""))
+    assert vorgabe._gewuenscht("homeassistant.components.http.ban")
+    assert not vorgabe._gewuenscht("homeassistant.components.mqtt")
+    alles, _ = _handler(["*"])
+    assert alles._gewuenscht("homeassistant.components.mqtt")
