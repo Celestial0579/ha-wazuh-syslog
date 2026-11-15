@@ -97,8 +97,10 @@ class SyslogWeiterleitung(logging.Handler):
         self._eigener_name = __name__.rsplit(".", 1)[0]
         # Zustand für Meldungen und Diagnose: jeder Wechsel von „geht“ auf „geht nicht“
         # wird gemeldet (höchstens alle MELDE_ABSTAND Sekunden), damit ein späterer Ausfall
-        # nicht lautlos bleibt.
+        # nicht lautlos bleibt. Fällt ein Ausfall in den Meldeabstand, wird er beim nächsten
+        # Fehler nach Ablauf nachgeholt („_gemeldet“ gilt je Ausfall, nicht je Zeitfenster).
         self.gestoert = False
+        self._gemeldet = False
         self.fehler_zaehler = 0
         self.letzter_erfolg: float | None = None
         self.letzter_fehler: str | None = None
@@ -162,8 +164,9 @@ class SyslogWeiterleitung(logging.Handler):
             self.fehler_zaehler += 1
             self.letzter_fehler = f"{type(fehler).__name__}: {str(fehler)[:100]}"
             jetzt = time.monotonic()
-            if not self.gestoert and jetzt - self._zuletzt_gemeldet >= MELDE_ABSTAND:
+            if not self._gemeldet and jetzt - self._zuletzt_gemeldet >= MELDE_ABSTAND:
                 self._zuletzt_gemeldet = jetzt
+                self._gemeldet = True
                 _LOGGER.error(
                     "Syslog-Versand an %s:%s schlug fehl (%s). Bis zum naechsten erfolgreichen "
                     "Versand werden weitere Fehler nicht gemeldet.",
@@ -174,7 +177,9 @@ class SyslogWeiterleitung(logging.Handler):
         self.letzter_erfolg = time.time()
         if self.gestoert:
             self.gestoert = False
-            _LOGGER.warning("Syslog-Versand an %s:%s geht wieder", self._host, self._port)
+            if self._gemeldet:  # „geht wieder“ nur nach einer Fehlermeldung
+                self._gemeldet = False
+                _LOGGER.warning("Syslog-Versand an %s:%s geht wieder", self._host, self._port)
 
     def close(self) -> None:
         try:
