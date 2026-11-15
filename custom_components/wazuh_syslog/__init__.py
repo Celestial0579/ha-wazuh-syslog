@@ -35,6 +35,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 import socket
+import threading
+import time
 
 import voluptuous as vol
 
@@ -55,6 +57,7 @@ _LOGGER = logging.getLogger(__name__)
 
 AUFFRISCHEN = timedelta(minutes=30)
 DIENST_KENNUNG = "wazuh_syslog.senden"
+MELDE_ABSTAND = 300  # Sekunden: Ausfälle höchstens so oft melden
 
 
 def _logger_liste(wert) -> list[str]:
@@ -92,7 +95,15 @@ class SyslogWeiterleitung(logging.Handler):
         self._kennung = kennung
         self._praefixe = tuple(logger_liste)
         self._eigener_name = __name__.rsplit(".", 1)[0]
-        self._fehler_gemeldet = False
+        # Zustand für Meldungen und Diagnose: jeder Wechsel von „geht“ auf „geht nicht“
+        # wird gemeldet (höchstens alle MELDE_ABSTAND Sekunden), damit ein späterer Ausfall
+        # nicht lautlos bleibt.
+        self.gestoert = False
+        self.fehler_zaehler = 0
+        self.letzter_erfolg: float | None = None
+        self.letzter_fehler: str | None = None
+        self._zuletzt_gemeldet = float("-inf")  # monotonic beginnt nahe 0 (frisch gestarteter Rechner)
+        self._sperre = threading.Lock()  # Socket und Ziel werden gemeinsam getauscht
         self._rechner = "homeassistant"
         # Socket, Rechnername und Zieladresse entstehen im Executor (socket_anlegen),
         # nie beim Senden: Home Assistant meldet blockierende Aufrufe in der
@@ -103,11 +114,14 @@ class SyslogWeiterleitung(logging.Handler):
         """Ziel aufloesen und Socket passend zur Adressfamilie anlegen. Im Executor aufrufen."""
         family, adresse = aufloesen(self._host, self._port)
         self._rechner = socket.gethostname().split(".")[0] or "homeassistant"
-        if self._sock is None or family != self._family:
-            alt, self._sock = self._sock, socket.socket(family, socket.SOCK_DGRAM)
-            if alt is not None:
-                alt.close()
-        self._family, self._ziel = family, adresse
+        alt = None
+        neu = socket.socket(family, socket.SOCK_DGRAM) if self._sock is None or family != self._family else None
+        with self._sperre:
+            if neu is not None:
+                alt, self._sock = self._sock, neu
+            self._family, self._ziel = family, adresse
+        if alt is not None:
+            alt.close()  # erst nach dem Tausch: ein laufender Versand nutzt schon den neuen
 
     def _gewuenscht(self, name: str) -> bool:
         return not self._praefixe or any(name == p or name.startswith(p + ".") for p in self._praefixe)
@@ -137,22 +151,30 @@ class SyslogWeiterleitung(logging.Handler):
 
     def _senden(self, text: str, stufe: str) -> None:
         try:
-            if self._sock is None or self._ziel is None:
-                raise OSError("Ziel noch nicht aufgeloest")
-            self._sock.sendto(self.paket(text, stufe), self._ziel)
+            with self._sperre:
+                if self._sock is None or self._ziel is None:
+                    raise OSError("Ziel noch nicht aufgeloest")
+                self._sock.sendto(self.paket(text, stufe), self._ziel)
         except Exception as fehler:  # noqa: BLE001
-            # EINMAL melden, dann schweigen. Protokollieren ist hier ungefaehrlich:
-            # emit() ueberspringt Eintraege der eigenen Integration, die Schleife
-            # kann also nicht entstehen. Ein vollstaendig stummes Schlucken hat
-            # am 20.09.2026 eine Stunde Fehlersuche gekostet - das Paket kam nie
-            # an, und niemand konnte sagen warum.
-            if not self._fehler_gemeldet:
-                self._fehler_gemeldet = True
+            # Protokollieren ist hier ungefaehrlich: emit() ueberspringt Eintraege der
+            # eigenen Integration, die Schleife kann also nicht entstehen. Ein vollstaendig
+            # stummes Schlucken hat am 20.09.2026 eine Stunde Fehlersuche gekostet.
+            self.fehler_zaehler += 1
+            self.letzter_fehler = f"{type(fehler).__name__}: {str(fehler)[:100]}"
+            jetzt = time.monotonic()
+            if not self.gestoert and jetzt - self._zuletzt_gemeldet >= MELDE_ABSTAND:
+                self._zuletzt_gemeldet = jetzt
                 _LOGGER.error(
-                    "Syslog-Versand an %s:%s schlug fehl (%s: %s). Weitere Fehler "
-                    "werden nicht mehr gemeldet.",
-                    self._host, self._port, type(fehler).__name__, fehler,
+                    "Syslog-Versand an %s:%s schlug fehl (%s). Bis zum naechsten erfolgreichen "
+                    "Versand werden weitere Fehler nicht gemeldet.",
+                    self._host, self._port, self.letzter_fehler,
                 )
+            self.gestoert = True
+            return
+        self.letzter_erfolg = time.time()
+        if self.gestoert:
+            self.gestoert = False
+            _LOGGER.warning("Syslog-Versand an %s:%s geht wieder", self._host, self._port)
 
     def close(self) -> None:
         try:

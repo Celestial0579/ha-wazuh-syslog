@@ -151,3 +151,37 @@ async def test_dialog_meldet_fehler(hass: HomeAssistant) -> None:
     )
     assert ergebnis["type"] is FlowResultType.FORM
     assert ergebnis["errors"] == {"host": "ungueltige_adresse"}
+
+
+def test_jeder_neue_ausfall_wird_gemeldet(caplog: pytest.LogCaptureFixture) -> None:
+    handler, mitschnitt = _handler()
+
+    def kaputt(_paket: bytes, _ziel) -> None:
+        raise OSError("Netz weg")
+
+    gut = mitschnitt.sendto
+    for _runde in range(2):
+        mitschnitt.sendto = kaputt
+        handler._senden("a", "WARNING")
+        handler._senden("b", "WARNING")
+        mitschnitt.sendto = gut
+        handler._senden("c", "WARNING")
+        handler._zuletzt_gemeldet -= 1000  # Meldeabstand verstrichen
+    fehler = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(fehler) == 2  # zwei Ausfälle mit Erfolg dazwischen, je eine Meldung
+    assert handler.fehler_zaehler == 4 and not handler.gestoert and handler.letzter_erfolg
+
+
+def test_meldeabstand(caplog: pytest.LogCaptureFixture) -> None:
+    handler, mitschnitt = _handler()
+    gut = mitschnitt.sendto
+
+    def kaputt(_paket: bytes, _ziel) -> None:
+        raise OSError("Netz weg")
+
+    for _runde in range(3):  # flatternde Verbindung ohne verstrichenen Abstand
+        mitschnitt.sendto = kaputt
+        handler._senden("a", "WARNING")
+        mitschnitt.sendto = gut
+        handler._senden("b", "WARNING")
+    assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1

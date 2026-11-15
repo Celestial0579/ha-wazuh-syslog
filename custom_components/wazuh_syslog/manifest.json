@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/Celestial0579/ha-wazuh-syslog/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.0.3"
+  "version": "1.0.4"
 }
