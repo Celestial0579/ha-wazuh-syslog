@@ -9,10 +9,13 @@
   FALLE 2 (20.09.2026): Der erste Entwurf benutzte PCRE-Syntax in einem
   normalen <regex>. Wazuhs eigene Ausdruckssprache OS_Regex kennt die nicht -
   der Dekoder greift dann zwar (der Elternteil passt), extrahiert aber NICHTS.
-  Sichtbar wird das nur daran, dass die Regelbeschreibung mit einem leeren
-  $(srcip) endet: "fehlgeschlagene Anmeldung von ". Der Alarm entsteht
-  trotzdem, die Korrelation ueber die Quell-IP faellt aber lautlos aus.
   Deshalb ausdruecklich type="pcre2".
+
+  SCHUTZ (seit 1.0.3): Jede weitergeleitete Zeile beginnt mit dem Namen ihres
+  Loggers. Eine fehlgeschlagene Anmeldung zaehlt nur, wenn die Zeile mit
+  "homeassistant.components.http.ban: " beginnt. Meldungen des Dienstes
+  wazuh_syslog.senden beginnen mit "wazuh_syslog.senden: " und koennen so
+  keine Anmeldung vortaeuschen, auch nicht mit dem Wortlaut der echten Zeile.
 -->
 <decoder name="homeassistant">
   <program_name>^homeassistant$</program_name>
@@ -20,7 +23,7 @@
 
 <decoder name="homeassistant-login">
   <parent>homeassistant</parent>
-  <prematch>Login attempt or request with invalid authentication</prematch>
-  <regex type="pcre2">from \S+ \(([^)]+)\)\. Requested URL: '([^']+)'</regex>
+  <prematch type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from </prematch>
+  <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from \S+ \(([^)]+)\)\. Requested URL: '([^']*)'</regex>
   <order>srcip, url</order>
 </decoder>

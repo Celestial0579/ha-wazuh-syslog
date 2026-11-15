@@ -4,9 +4,13 @@
   Quellen vergleichbar.
 -->
 <!--
-  Nummernbereich 100530-100533. 100400-100403 waren belegt (Suricata und
+  Nummernbereich 100530-100534. 100400-100403 waren belegt (Suricata und
   zz_korrelation) - vor dem Anlegen IMMER den Bestand pruefen, doppelte
   Nummern lassen die Regelpruefung beim Neustart scheitern.
+
+  Seit 1.0.3 sind alle Muster am Zeilenanfang auf den Namen des Loggers
+  verankert (siehe Dekoder). 100534 kennzeichnet Meldungen des Dienstes
+  wazuh_syslog.senden; sie sind Hinweise, keine Anmeldeereignisse.
 -->
 <group name="homeassistant,">
 
@@ -17,7 +21,7 @@
 
   <rule id="100531" level="5">
     <if_sid>100530</if_sid>
-    <match>Login attempt or request with invalid authentication</match>
+    <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from </regex>
     <description>Home Assistant: fehlgeschlagene Anmeldung von $(srcip)</description>
     <group>authentication_failed,aussenangriff,</group>
   </rule>
@@ -32,8 +36,14 @@
 
   <rule id="100533" level="7">
     <if_sid>100530</if_sid>
-    <match>hass_nabucasa|components.cloud</match>
+    <regex type="pcre2">^(hass_nabucasa|homeassistant\.components\.cloud)(\.[\w.]+)?: </regex>
     <description>Home Assistant: Stoerung des Fernzugangs</description>
+  </rule>
+
+  <rule id="100534" level="3">
+    <if_sid>100530</if_sid>
+    <regex type="pcre2">^wazuh_syslog\.senden: </regex>
+    <description>Home Assistant: Meldung einer Automatisierung</description>
   </rule>
 
 </group>

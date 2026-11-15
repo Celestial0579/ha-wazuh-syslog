@@ -15,6 +15,14 @@ und schickt passende Eintraege als RFC-3164-Syslog per UDP an den Wazuh-Manager.
 Zusaetzlich gibt es den Dienst wazuh_syslog.senden fuer eigene Meldungen aus
 Automatisierungen.
 
+SCHUTZMODELL: Das SIEM wertet Zeilen dieser Integration als Sicherheitsereignisse, vor allem
+fehlgeschlagene Anmeldungen MIT Quell-IP. Eine solche Zeile darf deshalb nur von
+homeassistant.components.http.ban stammen koennen. Jede weitergeleitete Zeile beginnt mit dem
+Namen ihres Loggers; Dekoder und Regeln verankern sich genau dort. Der Dienst senden ist nur
+fuer Admins und kennzeichnet seine Zeilen mit "wazuh_syslog.senden: ", kann also keine
+Anmelderegel ausloesen. Der Versand laeuft im Thread, der protokolliert (oft die
+Ereignisschleife): Er darf nie blockieren, also keine Namensaufloesung beim Senden.
+
 WAZUH-SEITE (nicht Teil dieser Integration):
   - In ossec.conf muss die IP dieser Anlage unter <allowed-ips> stehen, sonst
     verwirft wazuh-remoted die Pakete LAUTLOS.
@@ -24,15 +32,18 @@ WAZUH-SEITE (nicht Teil dieser Integration):
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import logging
 import socket
-from datetime import datetime
 
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import (
     CONF_HOST, CONF_KENNUNG, CONF_LOGGER, CONF_PORT, CONF_STUFE,
@@ -41,6 +52,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+AUFFRISCHEN = timedelta(minutes=30)
+DIENST_KENNUNG = "wazuh_syslog.senden"
 
 
 def _logger_liste(wert) -> list[str]:
@@ -54,43 +68,55 @@ def _logger_liste(wert) -> list[str]:
     return list(wert or [])
 
 
+def aufloesen(host: str, port: int) -> tuple[int, tuple]:
+    """Adressfamilie und Zieladresse; blockierend, nur im Executor aufrufen."""
+    family, _typ, _proto, _name, adresse = socket.getaddrinfo(host, port, type=socket.SOCK_DGRAM)[0]
+    return family, adresse
+
+
 class SyslogWeiterleitung(logging.Handler):
     """Schickt passende Protokolleintraege als Syslog an den Wazuh-Manager.
 
     FALLE, DIE HIER VERMIEDEN WIRD: Ein Handler, der beim Senden selbst protokolliert,
     erzeugt eine Endlosschleife - seine eigene Fehlermeldung loest den naechsten Versand
-    aus. Deshalb schluckt _senden JEDEN Fehler und schreibt nie ins Protokoll.
+    aus. Deshalb werden Eintraege der eigenen Integration nie weitergeleitet.
     """
 
     def __init__(self, host: str, port: int, kennung: str,
                  stufe: str, logger_liste: list[str]) -> None:
         super().__init__(level=getattr(logging, stufe, logging.WARNING))
-        self._ziel = (host, port)
+        self._host = host
+        self._port = port
+        self._ziel: tuple | None = None
+        self._family: int | None = None
         self._kennung = kennung
         self._praefixe = tuple(logger_liste)
         self._eigener_name = __name__.rsplit(".", 1)[0]
         self._fehler_gemeldet = False
-        # Der Socket wird BEIM EINRICHTEN im Executor erzeugt, nicht beim ersten
-        # Senden. Home Assistant erkennt blockierende Aufrufe in der Ereignis-
-        # schleife und wirft dafuer eine Ausnahme - socket.socket() gehoert dazu.
-        # Wer ihn traege erzeugt, faellt genau beim ersten Versand darauf herein.
+        self._rechner = "homeassistant"
+        # Socket, Rechnername und Zieladresse entstehen im Executor (socket_anlegen),
+        # nie beim Senden: Home Assistant meldet blockierende Aufrufe in der
+        # Ereignisschleife, und eine Namensaufloesung je Zeile kann sie lahmlegen.
         self._sock: socket.socket | None = None
 
     def socket_anlegen(self) -> None:
-        """Im Executor aufrufen, nie aus der Ereignisschleife."""
-        if self._sock is None:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        """Ziel aufloesen und Socket passend zur Adressfamilie anlegen. Im Executor aufrufen."""
+        family, adresse = aufloesen(self._host, self._port)
+        self._rechner = socket.gethostname().split(".")[0] or "homeassistant"
+        if self._sock is None or family != self._family:
+            alt, self._sock = self._sock, socket.socket(family, socket.SOCK_DGRAM)
+            if alt is not None:
+                alt.close()
+        self._family, self._ziel = family, adresse
 
-    def _verbindung(self) -> socket.socket:
-        if self._sock is None:
-            self.socket_anlegen()
-        return self._sock
+    def _gewuenscht(self, name: str) -> bool:
+        return not self._praefixe or any(name == p or name.startswith(p + ".") for p in self._praefixe)
 
     def emit(self, satz: logging.LogRecord) -> None:
         # Niemals die eigenen Meldungen weiterleiten - sonst schaukelt es sich auf.
-        if satz.name.startswith(self._eigener_name):
+        if satz.name == self._eigener_name or satz.name.startswith(self._eigener_name + "."):
             return
-        if self._praefixe and not satz.name.startswith(self._praefixe):
+        if not self._gewuenscht(satz.name):
             return
         try:
             text = self.format(satz)
@@ -98,19 +124,22 @@ class SyslogWeiterleitung(logging.Handler):
             return
         self._senden(text, satz.levelname)
 
+    def paket(self, text: str, stufe: str, jetzt: datetime | None = None) -> bytes:
+        """RFC 3164: <PRI>MMM tt hh:mm:ss rechner programm: text"""
+        schwere = SCHWERE.get(stufe, 5)
+        pri = FACILITY_LOCAL0 * 8 + schwere
+        # Der Tag im Zeitstempel ist rechtsbuendig mit Leerzeichen aufgefuellt -
+        # eine fuehrende Null laesst manche Dekoder scheitern.
+        jetzt = jetzt or datetime.now()
+        zeit = f"{jetzt.strftime('%b')} {jetzt.day:2d} {jetzt.strftime('%H:%M:%S')}"
+        einzeilig = " ".join(str(text).split())[:900]
+        return f"<{pri}>{zeit} {self._rechner} {self._kennung}: {einzeilig}".encode("utf-8", "replace")
+
     def _senden(self, text: str, stufe: str) -> None:
         try:
-            schwere = SCHWERE.get(stufe, 5)
-            pri = FACILITY_LOCAL0 * 8 + schwere
-            # RFC 3164: <PRI>MMM tt hh:mm:ss rechner programm: text
-            # Der Tag im Zeitstempel ist rechtsbuendig mit Leerzeichen aufgefuellt -
-            # ein fuehrender Nullstelle laesst manche Dekoder scheitern.
-            jetzt = datetime.now()
-            zeit = f"{jetzt.strftime('%b')} {jetzt.day:2d} {jetzt.strftime('%H:%M:%S')}"
-            rechner = socket.gethostname().split(".")[0] or "homeassistant"
-            einzeilig = " ".join(str(text).split())[:900]
-            paket = f"<{pri}>{zeit} {rechner} {self._kennung}: {einzeilig}".encode("utf-8", "replace")
-            self._verbindung().sendto(paket, self._ziel)
+            if self._sock is None or self._ziel is None:
+                raise OSError("Ziel noch nicht aufgeloest")
+            self._sock.sendto(self.paket(text, stufe), self._ziel)
         except Exception as fehler:  # noqa: BLE001
             # EINMAL melden, dann schweigen. Protokollieren ist hier ungefaehrlich:
             # emit() ueberspringt Eintraege der eigenen Integration, die Schleife
@@ -122,7 +151,7 @@ class SyslogWeiterleitung(logging.Handler):
                 _LOGGER.error(
                     "Syslog-Versand an %s:%s schlug fehl (%s: %s). Weitere Fehler "
                     "werden nicht mehr gemeldet.",
-                    self._ziel[0], self._ziel[1], type(fehler).__name__, fehler,
+                    self._host, self._port, type(fehler).__name__, fehler,
                 )
 
     def close(self) -> None:
@@ -140,24 +169,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handler einhaengen und den Dienst anmelden."""
     d = {**entry.data, **entry.options}
     handler = SyslogWeiterleitung(
-        host=d[CONF_HOST],
+        host=str(d[CONF_HOST]).strip(),
         port=int(d.get(CONF_PORT, VORGABE_PORT)),
         kennung=d.get(CONF_KENNUNG, VORGABE_KENNUNG),
         stufe=d.get(CONF_STUFE, VORGABE_STUFE),
         logger_liste=_logger_liste(d.get(CONF_LOGGER, VORGABE_LOGGER)),
     )
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
-    await hass.async_add_executor_job(handler.socket_anlegen)
+    try:
+        await hass.async_add_executor_job(handler.socket_anlegen)
+    except OSError as err:
+        handler.close()
+        raise ConfigEntryNotReady(f"Wazuh-Manager {d[CONF_HOST]} nicht aufloesbar: {err}") from err
     logging.getLogger().addHandler(handler)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = handler
 
+    async def _auffrischen(_jetzt: datetime) -> None:
+        try:
+            await hass.async_add_executor_job(handler.socket_anlegen)
+        except OSError as err:
+            _LOGGER.debug("Wazuh-Manager nicht neu aufgeloest, bleibe bei der alten Adresse: %s", err)
+
+    entry.async_on_unload(async_track_time_interval(hass, _auffrischen, AUFFRISCHEN))
+
     async def senden(aufruf: ServiceCall) -> None:
-        """Eigene Meldung aus einer Automatisierung heraus."""
-        handler._senden(aufruf.data["nachricht"], aufruf.data.get("stufe", "INFO"))
+        """Eigene Meldung aus einer Automatisierung heraus, eigens gekennzeichnet."""
+        for h in hass.data.get(DOMAIN, {}).values():
+            h._senden(f"{DIENST_KENNUNG}: {aufruf.data['nachricht']}", aufruf.data.get("stufe", "INFO"))
 
     if not hass.services.has_service(DOMAIN, "senden"):
-        hass.services.async_register(
-            DOMAIN, "senden", senden,
+        async_register_admin_service(
+            hass, DOMAIN, "senden", senden,
             schema=vol.Schema({
                 vol.Required("nachricht"): cv.string,
                 vol.Optional("stufe", default="INFO"): vol.In(list(SCHWERE)),

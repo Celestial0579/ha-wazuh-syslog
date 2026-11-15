@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -15,6 +16,22 @@ from .const import (
 )
 
 TITEL = "Wazuh: Protokollweiterleitung"
+KENNUNG_MUSTER = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+
+
+def pruefen(eingabe: dict[str, Any]) -> dict[str, str]:
+    """Eingaben pruefen, bevor sie gespeichert werden."""
+    fehler: dict[str, str] = {}
+    host = str(eingabe.get(CONF_HOST) or "").strip()
+    if not host or any(z.isspace() for z in host):
+        fehler[CONF_HOST] = "ungueltige_adresse"
+    if not 1 <= int(eingabe.get(CONF_PORT, VORGABE_PORT)) <= 65535:
+        fehler[CONF_PORT] = "ungueltiger_port"
+    # Der Programmname steht im Syslog-Kopf vor dem Doppelpunkt; Leer- oder Sonderzeichen
+    # zerstoeren den Kopf, und der Dekoder greift nicht.
+    if not KENNUNG_MUSTER.match(str(eingabe.get(CONF_KENNUNG, VORGABE_KENNUNG))):
+        fehler[CONF_KENNUNG] = "ungueltige_kennung"
+    return fehler
 
 
 def cv_liste(wert: Any) -> list[str]:
@@ -53,10 +70,12 @@ class WazuhSyslogConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
+        fehler: dict[str, str] = {}
+        if user_input is not None and not (fehler := pruefen(user_input)):
+            user_input[CONF_HOST] = str(user_input[CONF_HOST]).strip()
             user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER))
             return self.async_create_entry(title=TITEL, data=user_input)
-        return self.async_show_form(step_id="user", data_schema=_maske({}))
+        return self.async_show_form(step_id="user", data_schema=_maske(user_input or {}), errors=fehler)
 
     @staticmethod
     @callback
@@ -68,8 +87,10 @@ class WazuhSyslogOptionsFlow(OptionsFlow):
     """Nachtraegliches Aendern, ohne den Eintrag zu loeschen."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
+        fehler: dict[str, str] = {}
+        if user_input is not None and not (fehler := pruefen(user_input)):
+            user_input[CONF_HOST] = str(user_input[CONF_HOST]).strip()
             user_input[CONF_LOGGER] = cv_liste(user_input.get(CONF_LOGGER, VORGABE_LOGGER))
             return self.async_create_entry(title="", data=user_input)
-        jetzt = {**self.config_entry.data, **self.config_entry.options}
-        return self.async_show_form(step_id="init", data_schema=_maske(jetzt))
+        jetzt = {**self.config_entry.data, **self.config_entry.options, **(user_input or {})}
+        return self.async_show_form(step_id="init", data_schema=_maske(jetzt), errors=fehler)
