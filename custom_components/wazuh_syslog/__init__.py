@@ -102,7 +102,7 @@ class SyslogWeiterleitung(logging.Handler):
         self.fehler_zaehler = 0
         self.letzter_erfolg: float | None = None
         self.letzter_fehler: str | None = None
-        self._zuletzt_gemeldet = 0.0
+        self._zuletzt_gemeldet = float("-inf")  # monotonic beginnt nahe 0 (frisch gestarteter Rechner)
         self._sperre = threading.Lock()  # Socket und Ziel werden gemeinsam getauscht
         self._rechner = "homeassistant"
         # Socket, Rechnername und Zieladresse entstehen im Executor (socket_anlegen),
