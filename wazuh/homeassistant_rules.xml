@@ -49,7 +49,7 @@
   <rule id="100535" level="8">
     <if_sid>100530</if_sid>
     <regex type="pcre2">^homeassistant\.components\.http\.ban: Login attempt or request with invalid authentication from (?!(?!(?:.*?\)\. Requested URL: '){2})[^\s()]+ \([0-9A-Fa-f:.]+(?:%[0-9A-Za-z_.-]+)?\)\. Requested URL: ')</regex>
-    <description>Home Assistant: fehlgeschlagene Anmeldung, Quelladresse nicht eindeutig (verdaechtiger PTR-Name)</description>
+    <description>Home Assistant: fehlgeschlagene Anmeldung, Quelladresse nicht eindeutig (PTR-Name oder User-Agent)</description>
     <group>authentication_failed,aussenangriff,</group>
   </rule>
 

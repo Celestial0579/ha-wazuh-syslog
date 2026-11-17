@@ -33,7 +33,9 @@ WAZUH-SEITE (nicht Teil dieser Integration):
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import ipaddress
 import logging
+import re
 import socket
 import threading
 import time
@@ -47,6 +49,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.service import async_register_admin_service
 
+try:
+    from homeassistant.helpers.http import current_request
+except ImportError:  # pragma: no cover - ohne Anfrage-Kontext bleiben Anmeldezeilen unverändert
+    current_request = None
+
 from .const import (
     CONF_HOST, CONF_KENNUNG, CONF_LOGGER, CONF_PORT, CONF_STUFE,
     DOMAIN, FACILITY_LOCAL0, SCHWERE, VORGABE_KENNUNG, VORGABE_LOGGER,
@@ -58,6 +65,63 @@ _LOGGER = logging.getLogger(__name__)
 AUFFRISCHEN = timedelta(minutes=30)
 DIENST_KENNUNG = "wazuh_syslog.senden"
 MELDE_ABSTAND = 300  # Sekunden: Ausfälle höchstens so oft melden
+MAX_TEXT = 900  # Zeichen Text je Paket
+
+BAN_LOGGER = "homeassistant.components.http.ban"
+_BAN_ANFANG = f"{BAN_LOGGER}: Login attempt or request with invalid authentication from "
+_ADRESSFOLGE = "). Requested URL: '"
+_NAME_UNZULAESSIG = re.compile(r"[\s()]")
+
+
+def anfrage_adresse() -> str | None:
+    """Adresse der laufenden HTTP-Anfrage, so geschrieben wie in http.ban.
+
+    Home Assistant setzt ``current_request`` nach der Forwarded-Middleware; die Adresse
+    ist also dieselbe, die http.ban als ``ip_address(request.remote)`` in die Zeile
+    schreibt. Ohne Anfrage (oder mit unlesbarer Adresse) gibt es keine.
+    """
+    if current_request is None:
+        return None
+    try:
+        anfrage = current_request.get()
+        if anfrage is None or not anfrage.remote:
+            return None
+        return str(ipaddress.ip_address(anfrage.remote))
+    except Exception:  # noqa: BLE001 - der Versand darf daran nie scheitern
+        return None
+
+
+def ban_zeile_eindeutig(text: str, adresse: str | None) -> str:
+    """Anmeldezeile von http.ban so umschreiben, dass genau eine Adressfolge bleibt: die echte.
+
+    Vor der Adresse steht der Rechnername aus dem PTR, am Ende der User-Agent; beide
+    bestimmt der Absender. Stehen darin weitere Folgen "(IP). Requested URL: '", ist die
+    Zeile für Dekoder und Regeln mehrdeutig und bekommt keine srcip (GHSA-q7p9-34f8-phc3).
+    Das konnte jeder Absender mit einem passenden User-Agent erzwingen
+    (GHSA-39hx-rh84-fpmm).
+
+    ``adresse`` stammt aus der Anfrage selbst, nicht aus dem Text. Damit ist die echte
+    Folge die erste mit dieser Adresse: Leerraum und Klammern im Namen werden zu "_",
+    jede weitere Folge dahinter wird entschärft, und die Zeile wird so gekürzt, dass das
+    schließende Hochkomma der URL im Paket bleibt. Passt etwas nicht, bleibt die Zeile
+    unverändert (dann wie bisher ohne srcip, Regel 100535).
+    """
+    if adresse is None:
+        return text
+    text = " ".join(text.split())  # wie im Paket: mehrfacher Leerraum ergäbe sonst neue Folgen
+    if not text.startswith(_BAN_ANFANG):
+        return text
+    rest = text[len(_BAN_ANFANG):]
+    echte = f" ({adresse}{_ADRESSFOLGE}"
+    pos = rest.find(echte)
+    if pos <= 0:
+        return text
+    name = _NAME_UNZULAESSIG.sub("_", rest[:pos])
+    danach = rest[pos + len(echte):].replace(_ADRESSFOLGE, ")._Requested URL: '")
+    zeile = f"{_BAN_ANFANG}{name}{echte}{danach}"
+    if len(zeile) > MAX_TEXT:
+        zeile = zeile[:MAX_TEXT - 1] + "'"
+    return zeile
 
 
 def _logger_liste(wert) -> list[str]:
@@ -144,6 +208,8 @@ class SyslogWeiterleitung(logging.Handler):
             text = self.format(satz)
         except Exception:  # noqa: BLE001
             return
+        if satz.name == BAN_LOGGER:
+            text = ban_zeile_eindeutig(text, anfrage_adresse())
         self._senden(text, satz.levelname)
 
     def paket(self, text: str, stufe: str, jetzt: datetime | None = None) -> bytes:
@@ -154,7 +220,7 @@ class SyslogWeiterleitung(logging.Handler):
         # eine fuehrende Null laesst manche Dekoder scheitern.
         jetzt = jetzt or datetime.now()
         zeit = f"{jetzt.strftime('%b')} {jetzt.day:2d} {jetzt.strftime('%H:%M:%S')}"
-        einzeilig = " ".join(str(text).split())[:900]
+        einzeilig = " ".join(str(text).split())[:MAX_TEXT]
         return f"<{pri}>{zeit} {self._rechner} {self._kennung}: {einzeilig}".encode("utf-8", "replace")
 
     def _senden(self, text: str, stufe: str) -> None:
