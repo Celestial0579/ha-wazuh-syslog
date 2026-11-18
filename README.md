@@ -34,6 +34,14 @@ Admins aufrufbar, und seine Zeilen beginnen mit `wazuh_syslog.senden: `. So kann
 Dienst eine fehlgeschlagene Anmeldung mit beliebiger Quell-IP vortaeuschen; Dekoder und Regeln
 werten nur Zeilen, die mit `homeassistant.components.http.ban: ` beginnen.
 
+**Eindeutige Quell-IP.** Vor der Adresse steht in der Anmeldezeile der Rechnername aus dem PTR, am Ende
+der User-Agent; beide bestimmt der Absender. Damit beides keine zweite Adressfolge in die Zeile bringt,
+liest die Integration die Adresse aus der laufenden Anfrage von Home Assistant selbst. Sie ersetzt
+Leerraum und Klammern im Rechnernamen durch `_` und entschärft jede weitere Folge `). Requested URL: '`
+dahinter. Dann steht genau die echte Adresse als `srcip` in der Zeile, auch mit präpariertem User-Agent
+oder PTR-Namen. Ohne Anfrage-Kontext bleibt die Zeile, wie sie ist; mehrdeutige Zeilen meldet dann
+Regel 100535 ohne `srcip`.
+
 **Nach dem Update auf 1.0.3 und auf 1.0.6** Dekoder und Regeln aus `wazuh/` in Wazuh neu einspielen.
 1.0.6 bringt die Regeln 100535 und 100536 (Anmeldung mit nicht eindeutiger Quelladresse); vorher im
 Bestand prüfen, dass die Nummern frei sind.

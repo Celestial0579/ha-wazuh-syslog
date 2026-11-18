@@ -17,8 +17,9 @@ import pytest
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import Unauthorized
+from homeassistant.helpers.http import current_request
 
-from custom_components.wazuh_syslog import SyslogWeiterleitung, aufloesen
+from custom_components.wazuh_syslog import SyslogWeiterleitung, aufloesen, ban_zeile_eindeutig
 from custom_components.wazuh_syslog.config_flow import pruefen
 from custom_components.wazuh_syslog.const import DOMAIN
 
@@ -159,6 +160,73 @@ def test_mehrdeutige_zeile_ohne_srcip() -> None:
     zeile = ECHT.replace("curl/8.0 (203.0.113.99)", "x (198.51.100.1). Requested URL: '/'")
     assert not re.search(a["dekoder"], zeile) and not re.search(a["100531"], zeile)
     assert re.search(a["100535"], zeile)
+
+
+class _Anfrage:
+    """Attrappe einer aiohttp-Anfrage: nur die Gegenstelle."""
+
+    def __init__(self, remote: str | None) -> None:
+        self.remote = remote
+
+
+def _ban_text(remote: str | None, zeile: str) -> str:
+    """Schickt eine http.ban-Zeile durch emit(), mit oder ohne laufende Anfrage, und liefert den Text im Paket."""
+    handler, mitschnitt = _handler(["homeassistant.components.http.ban"])
+    marke = current_request.set(_Anfrage(remote) if remote is not None else None)
+    try:
+        nachricht = zeile.split(": ", 1)[1]
+        handler.emit(logging.LogRecord("homeassistant.components.http.ban", logging.WARNING, "", 0, nachricht, None, None))
+    finally:
+        current_request.reset(marke)
+    return mitschnitt.pakete[0].decode().split(" homeassistant: ", 1)[1]
+
+
+@pytest.mark.parametrize(
+    "zeile",
+    [
+        ECHT,
+        ECHT.replace("curl/8.0 (203.0.113.99)", "x (198.51.100.1). Requested URL: '/'"),  # User-Agent
+        ECHT.replace("curl/8.0 (203.0.113.99)", "x (198.51.100.1).   Requested\tURL:  '/"),  # dasselbe mit Leerraum
+        ECHT.replace("scanner.example", "x (198.51.100.1). Requested URL: '/'. (z"),  # PTR-Name (GHSA-q7p9)
+        ECHT.replace("curl/8.0 (203.0.113.99)", "x (203.0.113.7). Requested URL: '/'"),  # eigene Adresse doppelt
+        ECHT.replace("/auth/token", "/" + "a" * 1200),  # lange URL: das Hochkomma bleibt im Paket
+    ],
+)
+def test_srcip_aus_der_laufenden_anfrage(zeile: str) -> None:
+    """Mit bekannter Anfrage bekommt jede Anmeldezeile genau die echte srcip (GHSA-39hx-rh84-fpmm)."""
+    a = _ausdruecke()
+    text = _ban_text("203.0.113.7", zeile)
+    assert len(text) <= 900
+    treffer = re.search(a["dekoder"], text)
+    assert treffer and treffer.group(1) == "203.0.113.7"
+    assert re.search(a["100531"], text) and not re.search(a["100535"], text)
+
+
+@pytest.mark.parametrize("remote", [None, "192.0.2.50", "kein-ip"])
+def test_ohne_passende_anfrage_bleibt_die_zeile(remote: str | None) -> None:
+    """Ohne Anfrage, mit fremder oder unlesbarer Adresse bleibt die Zeile, wie sie ist: mehrdeutig, ohne srcip."""
+    a = _ausdruecke()
+    zeile = ECHT.replace("curl/8.0 (203.0.113.99)", "x (198.51.100.1). Requested URL: '/'")
+    text = _ban_text(remote, zeile)
+    assert text == zeile
+    assert not re.search(a["dekoder"], text) and re.search(a["100535"], text)
+
+
+def test_andere_zeilen_bleiben() -> None:
+    """Nur die Anmeldezeile wird umgeschrieben; andere Zeilen von http.ban bleiben."""
+    zeile = "homeassistant.components.http.ban: Banned IP 203.0.113.7 for too many login attempts"
+    assert ban_zeile_eindeutig(zeile, "203.0.113.7") == zeile
+    assert _ban_text("203.0.113.7", zeile) == zeile
+
+
+def test_ipv6_aus_der_anfrage() -> None:
+    a = _ausdruecke()
+    zeile = ECHT.replace("scanner.example (203.0.113.7)", "host-6.example (2001:db8::7)").replace(
+        "curl/8.0 (203.0.113.99)", "x (198.51.100.1). Requested URL: '/'"
+    )
+    text = _ban_text("2001:0db8:0:0::7", zeile)
+    treffer = re.search(a["dekoder"], text)
+    assert treffer and treffer.group(1) == "2001:db8::7"
 
 
 async def test_dienst_nur_fuer_admins(hass: HomeAssistant, hass_admin_user: MockUser, hass_read_only_user: MockUser) -> None:

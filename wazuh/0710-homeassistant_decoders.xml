@@ -25,6 +25,12 @@
   genau einmal vorkommt, der Name keine Leerzeichen und Klammern enthaelt und die
   Adresse nur aus Hex-Ziffern, Punkten und Doppelpunkten besteht (IPv6 mit %Zone).
   Alle anderen Anmeldezeilen meldet Regel 100535 ohne srcip.
+
+  SCHUTZ (GHSA-39hx-rh84-fpmm): Auch der User-Agent am Zeilenende kann die Folge
+  enthalten und die Zeile so mehrdeutig machen. Deshalb schreibt die Integration
+  Anmeldezeilen um, wenn sie die Adresse aus der laufenden Anfrage kennt: Der
+  Rechnername verliert Leerraum und Klammern, jede weitere Folge wird entschaerft.
+  Dann steht die echte Adresse genau einmal in der Zeile.
 -->
 <decoder name="homeassistant">
   <program_name>^homeassistant$</program_name>
